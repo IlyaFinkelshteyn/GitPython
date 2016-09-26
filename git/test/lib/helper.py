@@ -202,42 +202,42 @@ def with_rw_and_rw_remote_repo(working_tree_ref):
 
             temp_dir = osp(_mktemp())
             # On windows, this will fail ... we deal with failures anyway and default to telling the user to do it
+            gd = Git().daemon(temp_dir, enable='receive-pack', listen='127.0.0.1', port=GIT_DAEMON_PORT,
+                              as_process=True)
             try:
-                gd = Git().daemon(temp_dir, enable='receive-pack', listen='127.0.0.1', port=GIT_DAEMON_PORT,
-                                  as_process=True)
                 # yes, I know ... fortunately, this is always going to work if sleep time is just large enough
                 time.sleep(0.5)
-            except Exception:
-                gd = None
             # end
 
-            # try to list remotes to diagnoes whether the server is up
-            try:
-                rw_repo.git.ls_remote(d_remote)
-            except GitCommandError as e:
-                # We assume in good faith that we didn't start the daemon - but make sure we kill it anyway
-                # Of course we expect it to work here already, but maybe there are timing constraints
-                # on some platforms ?
-                if gd is not None:
-                    gd.proc.terminate()
-                log.warning('git-ls-remote failed due to: %s(%s)', type(e), e)
-                if is_win():
-                    msg = "git-daemon needs to run this test, but windows does not have one. "
-                    msg += 'Otherwise, run: git-daemon "%s"' % temp_dir
-                    raise AssertionError(msg)
-                else:
-                    msg = 'Please start a git-daemon to run this test, execute: git daemon --enable=receive-pack "%s"'
-                    msg += 'You can also run the daemon on a different port by passing --port=<port>'
-                    msg += 'and setting the environment variable GIT_PYTHON_TEST_GIT_DAEMON_PORT to <port>'
-                    msg %= temp_dir
-                    raise AssertionError(msg)
-                # END make assertion
-            # END catch ls remote error
+                # try to list remotes to diagnoes whether the server is up
+                try:
+                    rw_repo.git.ls_remote(d_remote)
+                except GitCommandError as e:
+                    # We assume in good faith that we didn't start the daemon - but make sure we kill it anyway
+                    # Of course we expect it to work here already, but maybe there are timing constraints
+                    # on some platforms ?
+                    if gd is not None:
+                        gd.proc.terminate()
+                    log.warning('git(%s) ls-remote failed due to:%s',
+                                rw_repo.git_dir, e)
+                    if is_win():
+                        msg = "git-daemon needs to run this test, but windows does not have one. "
+                        msg += 'Otherwise, run: git-daemon "%s"' % temp_dir
+                        raise AssertionError(msg)
+                    else:
+                        msg = ('Please start a git-daemon to run this test, execute: '
+                               'git daemon --enable=receive-pack "%s"'
+                               'You can also run the daemon on a different port by passing --port=<port>'
+                               'and setting the environment variable GIT_PYTHON_TEST_GIT_DAEMON_PORT to <port>')
+                        msg %= temp_dir
+                        raise AssertionError(msg)
+                    # END make assertion
+                # END catch ls remote error
 
-            # adjust working dir
-            prev_cwd = os.getcwd()
-            os.chdir(rw_repo.working_dir)
-            try:
+                # adjust working dir
+                prev_cwd = os.getcwd()
+                os.chdir(rw_repo.working_dir)
+
                 try:
                     return func(self, rw_repo, rw_remote_repo)
                 except:
@@ -245,11 +245,15 @@ def with_rw_and_rw_remote_repo(working_tree_ref):
                              repo_dir, remote_repo_dir)
                     repo_dir = remote_repo_dir = None
                     raise
+                finally:
+                    os.chdir(prev_cwd)
+
             finally:
                 if gd is not None:
                     gd.proc.terminate()
 
-                os.chdir(prev_cwd)
+                import gc
+                gc.collect()
                 rw_repo.git.clear_cache()
                 rw_remote_repo.git.clear_cache()
                 if repo_dir:
